@@ -32,8 +32,27 @@ def get_climate_news(keyword):
 st.set_page_config(page_title="실시간 뉴스 수집기", page_icon="🌱", layout="wide")
 
 # 모바일 눈높이에 맞춘 깔끔한 타이틀
-st.title("🌱 실시간 기후 뉴스")
-st.caption("PC와 모바일 어디서든 최적화된 화면으로 뉴스를 확인하세요.")
+# st.title("🌱 실시간 기후 뉴스")
+# st.caption("PC와 모바일 어디서든 최적화된 화면으로 뉴스를 확인하세요.")
+
+# 뷰포트(vw) 단위를 섞어 써서 화면이 작아지면 글자 크기도 자동으로 자연스럽게 줄어듭니다.
+st.markdown("""
+    <style>
+        .main-title {
+            font-size: clamp(24px, 5vw, 36px); /* 최소 24px, 화면 비례, 최대 36px */
+            font-weight: 700;
+            color: #2e7d32; /* 깔끔한 초록색 계열 */
+            margin-bottom: 5px;
+        }
+        .sub-title {
+            font-size: clamp(13px, 3vw, 16px);
+            color: #666666;
+            margin-bottom: 20px;
+        }
+    </style>
+    <div class="main-title">🌱 실시간 기후 뉴스</div>
+    <div class="sub-title">PC와 모바일 어디서든 최적화된 화면으로 뉴스를 확인하세요.</div>
+""", unsafe_allow_html=True)
 
 # 입력창과 버튼을 일렬로 배치 (PC에서는 나란히, 모바일에서는 자동으로 위아래로 쪼개짐)
 col1, col2 = st.columns([3, 1])

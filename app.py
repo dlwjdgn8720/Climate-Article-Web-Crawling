@@ -106,32 +106,31 @@ if st.session_state.crawled_df is not None:
             items_per_page = 10
             total_pages = (len(df) - 1) // items_per_page + 1
             
-            # [수정 완료] 잘못 적었던 disable_processing 옵션을 제거하고 깔끔하게 정돈했습니다.
+            # 현재 페이지 데이터 범위 계산
+            start_idx = (st.session_state.page_number - 1) * items_per_page
+            end_idx = start_idx + items_per_page
+            page_df = df.iloc[start_idx:end_idx]
+            
+            # [변경] 1. 뉴스를 먼저 상단에 출력합니다.
+            for idx, row in page_df.iterrows():
+                st.markdown(f"**{idx+1}. [{row['기사 제목']}]({row['기사 링크']})**")
+                st.markdown(f"<div class='news-date'>⏱ 작성일: {row['작성일']}</div>", unsafe_allow_html=True)
+                st.markdown("<div style='margin-bottom: 15px;'></div>", unsafe_allow_html=True)
+                
+            st.write("---") # 뉴스 목록과 페이징 버튼 사이 구분선
+            
+            # [변경] 2. 페이징 버튼 컨트롤러를 뉴스 목록 바로 밑(맨 아래)으로 배치했습니다.
             p_col1, p_col2, p_col3 = st.columns([1, 2, 1])
             with p_col1:
-                # 1페이지면 '이전' 버튼을 비활성화(disabled) 시킵니다.
                 if st.button("⬅️ 이전", use_container_width=True, disabled=(st.session_state.page_number == 1)):
                     st.session_state.page_number -= 1
                     st.rerun()
             with p_col2:
                 st.markdown(f"<p style='text-align: center; line-height: 38px;'><b>{st.session_state.page_number} / {total_pages} 페이지</b></p>", unsafe_allow_html=True)
             with p_col3:
-                # 마지막 페이지면 '다음' 버튼을 비활성화(disabled) 시킵니다.
                 if st.button("다음 ➡️", use_container_width=True, disabled=(st.session_state.page_number == total_pages)):
                     st.session_state.page_number += 1
                     st.rerun()
-            
-            st.write("---")
-            
-            # 현재 페이지 데이터 슬라이싱 출력
-            start_idx = (st.session_state.page_number - 1) * items_per_page
-            end_idx = start_idx + items_per_page
-            page_df = df.iloc[start_idx:end_idx]
-            
-            for idx, row in page_df.iterrows():
-                st.markdown(f"**{idx+1}. [{row['기사 제목']}]({row['기사 링크']})**")
-                st.markdown(f"<div class='news-date'>⏱ 작성일: {row['작성일']}</div>", unsafe_allow_html=True)
-                st.markdown("<div style='margin-bottom: 15px;'></div>", unsafe_allow_html=True)
                 
         st.write("---")
         with st.expander("📊 원본 데이터 표 형태로 보기"):

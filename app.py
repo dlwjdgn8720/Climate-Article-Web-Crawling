@@ -51,7 +51,7 @@ if "current_keyword" not in st.session_state:
     st.session_state.current_keyword = ""
 
 # 검색 버튼 클릭 시 데이터 작동
-if search_button:
+if search_button or (keyword_input and keyword_input != st.session_state.current_keyword):
     with st.spinner('최신 뉴스를 가져오는 중...'):
         data = get_climate_news(keyword_input)
         if data:

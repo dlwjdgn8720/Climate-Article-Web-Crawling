@@ -3,99 +3,106 @@ import requests
 from bs4 import BeautifulSoup
 import pandas as pd
 import urllib.parse
-from datetime import datetime
-import email.utils  # 💡 구글 RSS의 RFC 822 날짜 포맷을 가장 완벽하게 파싱하는 라이브러리
+from datetime import datetime, timezone, timedelta
+import email.utils
 
-# --- [1. 구글 RSS 뉴스 크롤링 함수] ---
+# --- [1. 지능형 구글 RSS 뉴스 크롤링 & 매핑 함수] ---
 def get_climate_news(keyword):
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
     
-    # 기후/환경 도메인 바리케이드 단어
-    eco_words = ["기후", "환경", "탄소", "에너지", "온난화", "그린", "배출권", "재생", "CCUS", "발전", "오염", "생태", "친환경"]
+    # 기후/환경 관련 필수 필터 단어들
+    eco_words = ["기후", "환경", "탄소", "에너지", "온난화", "그린", "배출권", "재생", "CCUS", "발전", "오염", "생태", "친환경", "테크", "AI"]
     is_pure_eco = any(word in keyword for word in eco_words)
     
-    # 💡 [핵심 수정 1] 구글 검색 쿼리 최적화
-    # 인물/기업 검색 시, 해당 검색어가 제목/본문에 "무조건" 들어가도록 쌍따옴표("")로 묶고 기후 테크 단어를 AND 조합합니다.
+    # 💡 30일 이내 기사를 다 긁어오기 위해 구글이 가장 오류 없이 인식하는 단순 결합 쿼리 사용
     if is_pure_eco:
-        refined_query = f"{keyword} (기후 OR 환경 OR 탄소 OR 에너지)"
+        query_text = f"{keyword}"
     else:
-        # 예: "젠슨 황" (기후 OR 환경 OR 탄소 OR 에너지 OR 기술) -> 젠슨황이 무조건 포함된 기후 기사만 타겟팅
-        refined_query = f'"{keyword}" (기후 OR 환경 OR 탄소 OR 에너지 OR 기술)'
+        # 인물/기업 검색 시 기후/환경 단어를 강제로 조합하여 검색 신뢰도 상승
+        query_text = f"{keyword} 기후 환경"
         
-    # 1주 -> 2주 -> 3주 순으로 확장 검색
-    for weeks in [1, 2, 3]:
-        query = f"{refined_query} when:{weeks}w"
-        encoded_query = urllib.parse.quote(query)
-        url = f"https://news.google.com/rss/search?q={encoded_query}&hl=ko&gl=KR&ceid=KR:ko"
+    encoded_query = urllib.parse.quote(query_text)
+    url = f"https://news.google.com/rss/search?q={encoded_query}&hl=ko&gl=KR&ceid=KR:ko"
+    
+    try:
+        response = requests.get(url, headers=headers, timeout=10)
+        if response.status_code != 200:
+            return None
+            
+        soup = BeautifulSoup(response.text, 'lxml-xml')
+        items = soup.find_all('item')
         
-        try:
-            response = requests.get(url, headers=headers, timeout=5)
-            if response.status_code != 200:
+        if not items:
+            return None
+            
+        # 현재 시간 기준 (타임존 매칭을 위해 UTC 기반 계산)
+        now = datetime.now(timezone.utc)
+        
+        news_week = []  # 1주일 이내 기사를 담을 바구니
+        news_month = [] # 한 달(30일) 이내 기사를 담을 바구니
+        
+        for item in items:
+            title = item.title.get_text()
+            link = item.link.get_text()
+            pub_date_str = item.pubDate.get_text() if item.pubDate else ""
+            
+            # 💡 [정밀 검증 매핑] 인물/기업 검색 시 제목에 해당 검색어가 "반드시" 들어있어야 통과
+            if not is_pure_eco:
+                if keyword.lower() not in title.lower():
+                    continue
+            
+            # 구글 RSS 날짜 포맷을 파이썬 날짜 객체로 완벽 변환
+            try:
+                parsed_date = email.utils.parsedate_to_datetime(pub_date_str)
+                # 만약 타임존 정보가 없다면 UTC로 기본 설정
+                if parsed_date.tzinfo is None:
+                    parsed_date = parsed_date.replace(tzinfo=timezone.utc)
+            except:
                 continue
                 
-            soup = BeautifulSoup(response.text, 'lxml-xml')
-            items = soup.find_all('item')
+            # 시간 차이 계산 (현재 시간 - 기사 작성 시간)
+            time_delta = now - parsed_date
             
-            if not items:
-                continue
-                
-            news_list = []
-            for item in items:
-                title = item.title.get_text()
-                link = item.link.get_text()
-                pub_date_str = item.pubDate.get_text() if item.pubDate else ""
-                
-                # 💡 [핵심 수정 2] 강력한 2차 필터 검증
-                # 인물이나 다른 키워드를 검색했다면, 기사 제목에 '검색어'가 무조건 실물로 들어있는지 한 번 더 검사합니다.
-                is_kw_in_title = keyword.lower() in title.lower()
-                has_eco_word = any(word.lower() in title.lower() for word in eco_words)
-                
-                if not is_pure_eco:
-                    # 젠슨황, 이재명 등 인물 검색 시 제목에 이름이 없으면 가차없이 버림 (노이즈 완벽 차단)
-                    if not is_kw_in_title:
-                        continue
-                else:
-                    # 일반 기후 키워드 검색 시에는 둘 중 하나만 맞아도 통과
-                    if not (is_kw_in_title or has_eco_word):
-                        continue
-                
-                # 💡 [핵심 수정 3] 완벽한 표준 시간 데이터 파싱
-                # 구글 RSS의 표준 시간대 문자열을 파이썬 타임스탬프로 정확히 디코딩합니다.
-                try:
-                    parsed_date = email.utils.parsedate_to_datetime(pub_date_str)
-                except:
-                    parsed_date = datetime.now()
-                
-                formatted_date = parsed_date.strftime("%Y-%m-%d %H:%M")
-                news_list.append({
-                    "기사 제목": title, 
-                    "기사 링크": link, 
-                    "작성일": formatted_date,
-                    "_raw_date": parsed_date  # 정확한 정렬을 위한 datetime 객체 유지
-                })
-                
-            if news_list:
-                # 💡 [핵심 수정 4] 초 단위 밀리초 단위까지 비교하여 완벽한 내림차순(최신순) 정렬
-                news_list = sorted(news_list, key=lambda x: x["_raw_date"], reverse=True)
-                
-                if weeks > 1:
-                    st.toast(f"💡 최근 1주일 내 뉴스가 없어 {weeks}주일 전으로 확장했습니다.", icon="ℹ️")
-                return news_list
-                
-        except Exception as e:
-            continue
+            formatted_date = parsed_date.strftime("%Y-%m-%d %H:%M")
+            data_row = {
+                "기사 제목": title, 
+                "기사 링크": link, 
+                "작성일": formatted_date,
+                "_raw_date": parsed_date
+            }
             
-    return None
+            # 1. 1주일(7일) 이내 기사 분류
+            if time_delta <= timedelta(days=7):
+                news_week.append(data_row)
+            # 2. 한 달(30일) 이내 기사 분류
+            if time_delta <= timedelta(days=30):
+                news_month.append(data_row)
+                
+        # 💡 [요구사항 1번 구현]: 1주일 내용이 있으면 1주일 치 반환, 없으면 한 달 치로 확장
+        if news_week:
+            final_list = sorted(news_week, key=lambda x: x["_raw_date"], reverse=True)
+            return final_list, "1주일"
+        elif news_month:
+            final_list = sorted(news_month, key=lambda x: x["_raw_date"], reverse=True)
+            return final_list, "한 달"
+            
+    except Exception as e:
+        st.error(f"크롤링 중 시스템 오류 발생: {e}")
+        
+    return None, None
 
-# --- [2. UI 설정 및 세션 상태 관리] ---
+# --- [2. UI 및 세션 상태 최적화] ---
 st.set_page_config(page_title="실시간 뉴스 수집기", page_icon="🌱", layout="wide")
 
+# 세션 관리 상태 단순화하여 버그 차단
 if "search_word" not in st.session_state: st.session_state.search_word = "기후변화"
 if "news_df" not in st.session_state: st.session_state.news_df = None
 if "p_num" not in st.session_state: st.session_state.p_num = 1
+if "period_info" not in st.session_state: st.session_state.period_info = ""
 
+# 디자인 입히기
 st.markdown("""
     <style>
         .main-title { font-size: clamp(24px, 5vw, 36px); font-weight: 700; color: #2e7d32; margin-bottom: 5px; }
@@ -103,11 +110,11 @@ st.markdown("""
         .news-date { font-size: 12px; color: #888888; margin-top: 2px; }
         .keyword-label { font-size: 14px; font-weight: bold; color: #444444; margin-bottom: 5px; }
     </style>
-    <div class="main-title">🌱 실시간 기후 뉴스 (최신순)</div>
-    <div class="sub-title">원하는 키워드가 연관된 기후 뉴스를 실시간으로 정밀 추적합니다.</div>
+    <div class="main-title">🌱 실시간 기후 뉴스 수집기</div>
+    <div class="sub-title">검색어와 연관된 최신 기후/환경 기술 뉴스를 칼같이 수집합니다.</div>
 """, unsafe_allow_html=True)
 
-# 추천 키워드 영역
+# 추천 키워드 버튼 영역
 recommended_keywords = ["기후변화", "탄소중립", "신재생에너지", "CCUS", "지구온난화"]
 st.markdown("<div class='keyword-label'>🔥 추천 키워드 바로 검색</div>", unsafe_allow_html=True)
 
@@ -116,41 +123,47 @@ for i, kw in enumerate(recommended_keywords):
     with kw_cols[i]:
         if st.button(f"#{kw}", use_container_width=True):
             st.session_state.search_word = kw
-            with st.spinner(f"'{kw}' 최신 뉴스를 가져오는 중..."):
-                res = get_climate_news(kw)
+            with st.spinner(f"'{kw}' 최신 뉴스를 수집 중..."):
+                res, period = get_climate_news(kw)
                 if res:
                     st.session_state.news_df = pd.DataFrame(res)
+                    st.session_state.period_info = period
                     st.session_state.p_num = 1
                 else:
                     st.session_state.news_df = None
-                    st.error("뉴스 데이터를 가져오지 못했습니다.")
+                    st.error("최근 한 달간 수집된 뉴스 데이터가 없습니다.")
 
 st.write(" ") 
 
-# 입력창과 검색 버튼 배치
+# 입력창과 일반 검색 버튼 영역
 col1, col2 = st.columns([3, 1])
 with col1:
     keyword_input = st.text_input("검색어 입력", key="search_word", label_visibility="collapsed")
 with col2:
     search_button = st.button("🔍 뉴스 검색", use_container_width=True)
 
+# 💡 통합 검색 버튼 트리거 관리
 if search_button:
-    with st.spinner(f"'{keyword_input}' 최신 뉴스를 가져오는 중..."):
-        res = get_climate_news(keyword_input)
+    with st.spinner(f"'{keyword_input}' 뉴스 매핑 및 정제 중..."):
+        res, period = get_climate_news(keyword_input)
         if res:
             st.session_state.news_df = pd.DataFrame(res)
+            st.session_state.period_info = period
             st.session_state.p_num = 1
         else:
             st.session_state.news_df = None
-            st.error(f"'{keyword_input}' 관련 기후/환경 뉴스를 찾지 못했습니다.")
+            st.error(f"'{keyword_input}' 관련 최신 기후 뉴스가 없거나 수집에 실패했습니다.")
 
 st.write("---")
 
-# --- [3. 결과 레이아웃 화면 출력] ---
+# --- [3. 결과 레이아웃 디스플레이] ---
 if st.session_state.news_df is not None:
     df = st.session_state.news_df
+    current_kw = st.session_state.search_word
+    period_text = st.session_state.period_info
     
-    st.success(f"✨ '{st.session_state.search_word}' 관련 최신 뉴스 {len(df)}개")
+    # 어떤 기간의 데이터를 가져왔는지 상단에 명확히 표기
+    st.success(f"✨ '{current_kw}' 관련 {period_text} 이내 최신 뉴스 {len(df)}개 (최신순 정렬)")
     
     tab1, tab2 = st.tabs(["📰 뉴스 목록 보기", "📥 데이터 내보내기"])
     
@@ -166,7 +179,7 @@ if st.session_state.news_df is not None:
                 st.markdown("<div style='margin-bottom: 20px; border-bottom: 1px dashed #eee;'></div>", unsafe_allow_html=True)
         
         else:
-            # PC용 페이징 
+            # PC용 10개씩 페이징 처리 하단 배치
             items_per_page = 10
             total_pages = (len(df) - 1) // items_per_page + 1
             
@@ -203,7 +216,7 @@ if st.session_state.news_df is not None:
         st.download_button(
             label="📥 엑셀(CSV) 다운로드",
             data=csv,
-            file_name=f"{st.session_state.search_word}_최신뉴스.csv",
+            file_name=f"{current_kw}_최신뉴스.csv",
             mime="text/csv",
             use_container_width=True
         )

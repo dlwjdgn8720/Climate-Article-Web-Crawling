@@ -12,16 +12,18 @@ def get_climate_news(keyword):
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
     
-    # 💡 [요구사항 2] eco_words에서 'AI' 완전 제거
+    # 순수 기후/환경 기술어 리스트
     eco_words = ["기후", "탄소", "에너지", "온난화", "그린", "배출권", "재생", "CCUS", "발전", "오염", "친환경", "테크"]
     is_pure_eco = any(word in keyword for word in eco_words)
     
-    # 💡 [요구사항 4, 5] 구글 검색 엔진용 쿼리 튜닝 및 노이즈 필터링
-    # 구글 엔진이 오작동하지 않도록 쿼리를 가장 인지하기 쉬운 형태로 최적화합니다.
+    # 용어별 최적화된 구글 검색 쿼리 송출
     if is_pure_eco:
-        query_text = f"{keyword}"
+        if keyword.upper() == "CCUS":
+            query_text = "CCUS OR '탄소 포집' OR '이산화탄소 저장'"
+        else:
+            query_text = f"{keyword}"
     else:
-        # 인물 검색 시 '정치 생태계', '근무 환경' 같은 일반 명사 노이즈를 피하기 위해 확실한 기후 테크 단어를 결합
+        # 인물 검색 시 기후/환경 도메인 단어를 강제로 엮어 구글 수집 정확도 향상
         query_text = f'"{keyword}" (기후 OR 탄소 OR 친환경 OR "그린 테크")'
         
     encoded_query = urllib.parse.quote(query_text)
@@ -47,12 +49,25 @@ def get_climate_news(keyword):
             link = item.link.get_text()
             pub_date_str = item.pubDate.get_text() if item.pubDate else ""
             
-            # 인물/기업 검색 시 제목에 해당 검색어가 실물로 들어있는지 정밀 매핑
+            # 💡 [핵심 수정: 범용 기후/환경 도메인 매핑 체계]
             if not is_pure_eco:
+                # 1) 인물/기업 검색 시 제목에 이름이 필수 포함되어야 함
                 if keyword.lower() not in title.lower():
                     continue
+                # 2) 무의미한 야구 필터를 빼고, 제목에 '기후/환경 관련 핵심어'가 하나도 없다면 무조건 제외
+                if not any(w in title for w in ["기후", "환경", "탄소", "에너지", "그린", "친환경", "신재생", "넷제로", "배출권"]):
+                    continue
+            else:
+                # 3) 순수 환경어(CCUS 등) 검색 시: 동의어나 환경 핵심 단어가 제목에 있으면 통과
+                if keyword.upper() == "CCUS":
+                    ccus_synonyms = ["ccus", "포집", "저장", "탄소", "이산화탄소"]
+                    if not any(syn in title.lower() for syn in ccus_synonyms):
+                        continue
+                else:
+                    if keyword.lower() not in title.lower() and not any(w in title for w in ["기후", "탄소", "환경"]):
+                        continue
             
-            # 날짜 파싱 및 동기화
+            # 날짜 파싱
             try:
                 parsed_date = email.utils.parsedate_to_datetime(pub_date_str)
                 if parsed_date.tzinfo is None:
@@ -70,13 +85,12 @@ def get_climate_news(keyword):
                 "_raw_date": parsed_date
             }
             
-            # 💡 [요구사항 1] 날짜별 데이터 분류 (1주일 내 데이터를 우선으로 수집)
             if time_delta <= timedelta(days=7):
                 news_week.append(data_row)
             if time_delta <= timedelta(days=30):
                 news_month.append(data_row)
                 
-        # 데이터가 많은 순서대로 최신순 정렬 후 반환
+        # 데이터 수집 기간 매핑 (1주일 우선 -> 없으면 한 달 연장)
         if news_week:
             final_list = sorted(news_week, key=lambda x: x["_raw_date"], reverse=True)
             return final_list, "1주일"
@@ -92,14 +106,12 @@ def get_climate_news(keyword):
 # --- [2. UI 및 세션 상태 최적화] ---
 st.set_page_config(page_title="실시간 뉴스 수집기", page_icon="🌱", layout="wide")
 
-# 세션 상태 변수 초기화
 if "search_word" not in st.session_state: st.session_state.search_word = "기후변화"
 if "last_searched" not in st.session_state: st.session_state.last_searched = ""
 if "news_df" not in st.session_state: st.session_state.news_df = None
 if "p_num" not in st.session_state: st.session_state.p_num = 1
 if "period_info" not in st.session_state: st.session_state.period_info = ""
 
-# 💡 [요구사항 1] 헤더에서 '칼같이' 단어 제외 및 문구 정돈
 st.markdown("""
     <style>
         .main-title { font-size: clamp(24px, 5vw, 36px); font-weight: 700; color: #2e7d32; margin-bottom: 5px; }
@@ -111,7 +123,6 @@ st.markdown("""
     <div class="sub-title">검색어와 연관된 최신 기후 및 환경 기술 뉴스를 정확하게 수집합니다.</div>
 """, unsafe_allow_html=True)
 
-# 추천 키워드 영역
 recommended_keywords = ["기후변화", "탄소중립", "신재생에너지", "CCUS", "지구온난화"]
 st.markdown("<div class='keyword-label'>🔥 추천 키워드 바로 검색</div>", unsafe_allow_html=True)
 
@@ -133,15 +144,13 @@ for i, kw in enumerate(recommended_keywords):
 
 st.write(" ") 
 
-# 입력창과 일반 검색 버튼 영역
 col1, col2 = st.columns([3, 1])
 with col1:
     keyword_input = st.text_input("검색어 입력", key="search_word", label_visibility="collapsed")
 with col2:
     search_button = st.button("🔍 뉴스 검색", use_container_width=True)
 
-# 💡 [요구사항 3] 엔터(Enter) 키 입력 및 검색 버튼 트리거 작동 원리 복원
-# 입력창의 글자가 직전에 검색에 성공했던 단어와 다르면 엔터를 친 것으로 간주하여 크롤링을 수행합니다.
+# 엔터 키 및 검색 버튼 트리거 작동
 is_enter_pressed = keyword_input and (keyword_input != st.session_state.last_searched)
 trigger_search = search_button or is_enter_pressed
 
@@ -151,7 +160,7 @@ if trigger_search:
         if res:
             st.session_state.news_df = pd.DataFrame(res)
             st.session_state.period_info = period
-            st.session_state.last_searched = keyword_input  # 검색 기록 동기화로 무한 루프 방지
+            st.session_state.last_searched = keyword_input  
             st.session_state.p_num = 1
         else:
             st.session_state.news_df = None
@@ -185,6 +194,7 @@ if st.session_state.news_df is not None:
             items_per_page = 10
             total_pages = (len(df) - 1) // items_per_page + 1
             
+            st.session_state.p_num = min(st.session_state.p_num, total_pages)
             start_idx = (st.session_state.p_num - 1) * items_per_page
             end_idx = start_idx + items_per_page
             page_df = df.iloc[start_idx:end_idx]

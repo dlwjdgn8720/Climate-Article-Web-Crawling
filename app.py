@@ -12,20 +12,20 @@ def get_climate_news(keyword):
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
     
-    # 순수 기후/환경 기술어 리스트 (여기에 걸리면 1차 단순 쿼리로 변환)
+    # 순수 기후/환경 기술어 리스트
     eco_words = ["기후", "탄소", "에너지", "온난화", "그린", "배출권", "재생", "CCUS", "발전", "오염", "친환경", "테크", "넷제로", "환경"]
     is_pure_eco = any(word in keyword for word in eco_words)
     
-    # 💡 [핵심 수정 1] 구글 검색 쿼리 전면 단순화 (구글 엔진 검색 범위 극대화)
-    # 구글 RSS 내부 연산자 버그를 막기 위해 특수 기호와 괄호를 없애고 직설적인 키워드로 쏩니다.
-    if is_pure_eco:
-        if keyword.upper() == "CCUS":
-            # CCUS의 경우 관련 핵심 한글 용어를 구글에 직접 던져 검색 풀(Pool)을 3배 이상 넓힙니다.
-            query_text = "CCUS 탄소포집"
-        else:
-            query_text = f"{keyword}"
+    # 💡 [대혁신] 구글 RSS의 영문 약어 인식 한계를 극복하기 위한 확장 쿼리 맵 생성
+    # 사용자가 'CCUS'를 치면 구글에 국문 풀이명과 핵심 도메인을 결합한 완벽한 검색 조합을 던집니다.
+    if keyword.upper() == "CCUS":
+        query_text = "탄소포집 CCUS 이산화탄소 저감"
+    elif "온난화" in keyword:
+        query_text = "지구온난화 기후위기 환경"
+    elif is_pure_eco:
+        query_text = f"{keyword}"
     else:
-        # 인물/기업 검색 시 기후 도메인이 흐려지지 않도록 결합
+        # 인물/기업 검색 시
         query_text = f"{keyword} 기후 탄소"
         
     encoded_query = urllib.parse.quote(query_text)
@@ -51,24 +51,22 @@ def get_climate_news(keyword):
             link = item.link.get_text()
             pub_date_str = item.pubDate.get_text() if item.pubDate else ""
             
-            # 💡 [핵심 수정 2] 2차 제목 매핑 검증의 유연성 확보 (탈락 현상 원천 차단)
+            # 💡 [정밀 검증 2차 필터링 라이트화]
             if not is_pure_eco:
-                # 인물/기업 검색 시: 제목에 이름과 기후 도메인 단어가 동시에 존재해야 노이즈 차단
+                # 인물/기업 검색 시: 이름과 기후 도메인 단어가 동시에 존재해야 가십성 뉴스 차단
                 if keyword.lower() not in title.lower():
                     continue
                 if not any(w in title for w in ["기후", "환경", "탄소", "에너지", "그린", "친환경", "신재생", "넷제로", "배출권"]):
                     continue
             else:
-                # 순수 전문 용어(CCUS, 지구온난화 등) 검색 시:
-                # 기사 제목에 원본 키워드가 직접 들어있거나, 기후/환경의 핵심적 맥락 단어가 포함되어 있다면 무조건 통과!
+                # 💡 [핵심 수정] 전문 용어 검색 시 파이썬 단에서의 "과도한 차단"을 전면 해제합니다.
+                # 구글이 이미 1차로 연관 뉴스를 잘 긁어왔으므로, 제목 검사는 최소한의 핵심 키워드만 있으면 패스시킵니다.
                 if keyword.upper() == "CCUS":
-                    # CCUS는 영문, 국문 풀이명, 포집 관련 단어 중 하나만 있어도 수집하도록 가드를 활짝 엽니다.
-                    ccus_pass = ["ccus", "포집", "저장", "탄소", "이산화탄소", "넷제로"]
+                    ccus_pass = ["ccus", "포집", "저장", "탄소", "이산화탄소", "에너지", "환경", "기후", "발전", "그린", "신재생"]
                     if not any(syn in title.lower() for syn in ccus_pass):
                         continue
                 else:
-                    # 지구온난화 등 일반 전문어 역시 검색어 본연의 단어나 핵심 기후 환경어 매칭 시 생존
-                    eco_pass = [keyword.lower(), "기후", "탄소", "환경", "온난화", "그린"]
+                    eco_pass = [keyword.lower(), "기후", "탄소", "환경", "온난화", "그린", "에너지"]
                     if not any(w in title.lower() for w in eco_pass):
                         continue
             

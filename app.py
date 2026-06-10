@@ -51,35 +51,58 @@ st.set_page_config(page_title="실시간 뉴스 수집기", page_icon="🌱", la
 st.markdown("""
     <style>
         .main-title { font-size: clamp(24px, 5vw, 36px); font-weight: 700; color: #2e7d32; margin-bottom: 5px; }
-        .sub-title { font-size: clamp(13px, 3vw, 16px); color: #666666; margin-bottom: 20px; }
+        .sub-title { font-size: clamp(13px, 3vw, 16px); color: #666666; margin-bottom: 15px; }
         .news-date { font-size: 12px; color: #888888; margin-top: 2px; }
+        .keyword-label { font-size: 14px; font-weight: bold; color: #444444; margin-bottom: 5px; }
     </style>
     <div class="main-title">🌱 실시간 기후 뉴스 (최신 1주일)</div>
     <div class="sub-title">최근 7일간의 뉴스를 가장 빠르게 확인하세요.</div>
 """, unsafe_allow_html=True)
 
+# 💡 [세션 상태 관리]: 검색어와 데이터 변수들을 미리 초기화합니다.
+if "search_keyword" not in st.session_state: st.session_state.search_keyword = "기후변화"
+if "crawled_df" not in st.session_state: st.session_state.crawled_df = None
+if "current_keyword" not in st.session_state: st.session_state.current_keyword = ""
+if "page_number" not in st.session_state: st.session_state.page_number = 1
+
+# 💡 [추천 키워드 학습/설정 파트]: 여기에 원하는 키워드를 마음껏 추가하거나 변경하세요!
+recommended_keywords = ["기후변화", "탄소중립", "신재생에너지", "CCUS", "지구온난화"]
+
+st.markdown("<div class='keyword-label'>🔥 추천 키워드 바로 검색</div>", unsafe_allow_html=True)
+
+# 추천 키워드 버튼들을 한 줄로 이쁘게 배치 (모바일에서는 자동으로 흐름 정렬됨)
+kw_cols = st.columns(len(recommended_keywords))
+for i, kw in enumerate(recommended_keywords):
+    with kw_cols[i]:
+        # 버튼을 누르면 해당 키워드가 세션 상태에 즉시 반영되고 페이지가 새로고침됩니다.
+        if st.button(f"#{kw}", use_container_width=True):
+            st.session_state.search_keyword = kw
+
+st.write(" ") # 미세 여백 조절
+
+# 입력창과 버튼 배치 (value 값에 세션에 저장된 검색어가 연동됩니다)
 col1, col2 = st.columns([3, 1])
 with col1:
-    keyword_input = st.text_input("검색어 입력", value="기후변화", label_visibility="collapsed")
+    keyword_input = st.text_input("검색어 입력", value=st.session_state.search_keyword, label_visibility="collapsed")
 with col2:
     search_button = st.button("🔍 뉴스 검색", use_container_width=True)
 
 st.write("---")
 
-if "crawled_df" not in st.session_state: st.session_state.crawled_df = None
-if "current_keyword" not in st.session_state: st.session_state.current_keyword = ""
-if "page_number" not in st.session_state: st.session_state.page_number = 1
+# 검색 실행 로직 체크 (직접 검색 버튼을 누름 / 엔터를 침 / 혹은 추천 키워드 버튼을 클릭해서 세션 값이 바뀜)
+trigger_search = search_button or (keyword_input and keyword_input != st.session_state.current_keyword)
 
-if search_button or (keyword_input and keyword_input != st.session_state.current_keyword):
-    with st.spinner('최신 뉴스를 가져오는 중...'):
+if trigger_search:
+    with st.spinner(f"'{keyword_input}' 최신 뉴스를 가져오는 중..."):
         data = get_climate_news(keyword_input)
         if data:
             st.session_state.crawled_df = pd.DataFrame(data)
             st.session_state.current_keyword = keyword_input
-            st.session_state.page_number = 1
+            st.session_state.search_keyword = keyword_input # 현재 쳐진 텍스트 상태 동기화
+            st.session_state.page_number = 1 # 페이지 리셋
         else:
             st.session_state.crawled_df = None
-            st.error("최근 1주일간의 뉴스 피드를 가져오지 못했습니다.")
+            st.error(f"최근 1주일간의 '{keyword_input}' 뉴스 피드를 가져오지 못했습니다.")
 
 # --- [3. 결과 레이아웃 구성] ---
 if st.session_state.crawled_df is not None:
@@ -102,24 +125,20 @@ if st.session_state.crawled_df is not None:
                 st.markdown("<div style='margin-bottom: 20px; border-bottom: 1px dashed #eee;'></div>", unsafe_allow_html=True)
         
         else:
-            # 💻 PC용: 10개씩 페이징 처리
             items_per_page = 10
             total_pages = (len(df) - 1) // items_per_page + 1
             
-            # 현재 페이지 데이터 범위 계산
             start_idx = (st.session_state.page_number - 1) * items_per_page
             end_idx = start_idx + items_per_page
             page_df = df.iloc[start_idx:end_idx]
             
-            # [변경] 1. 뉴스를 먼저 상단에 출력합니다.
             for idx, row in page_df.iterrows():
                 st.markdown(f"**{idx+1}. [{row['기사 제목']}]({row['기사 링크']})**")
                 st.markdown(f"<div class='news-date'>⏱ 작성일: {row['작성일']}</div>", unsafe_allow_html=True)
                 st.markdown("<div style='margin-bottom: 15px;'></div>", unsafe_allow_html=True)
                 
-            st.write("---") # 뉴스 목록과 페이징 버튼 사이 구분선
+            st.write("---") 
             
-            # [변경] 2. 페이징 버튼 컨트롤러를 뉴스 목록 바로 밑(맨 아래)으로 배치했습니다.
             p_col1, p_col2, p_col3 = st.columns([1, 2, 1])
             with p_col1:
                 if st.button("⬅️ 이전", use_container_width=True, disabled=(st.session_state.page_number == 1)):
@@ -147,4 +166,4 @@ if st.session_state.crawled_df is not None:
             use_container_width=True
         )
 else:
-    st.info("검색어를 입력하고 검색 버튼을 눌러주세요.")
+    st.info("검색어를 입력하거나 위의 추천 키워드를 눌러주세요.")

@@ -5,14 +5,23 @@ import pandas as pd
 import urllib.parse
 from datetime import datetime
 
-# --- [1. 구글 RSS 뉴스 크롤링 함수] ---
+# --- [1. 구글 RSS 뉴스 크롤링 함수 (기후/환경 노이즈 필터링 강화)] ---
 def get_climate_news(keyword):
-    query = f"{keyword} when:7d"
-    encoded_query = urllib.parse.quote(query)
+    # 💡 1차 대책: 구글 검색 연산자 활용
+    # 사용자가 친 검색어 외에 환경 관련 핵심 단어들 중 하나가 '반드시(AND)' 포함되도록 검색 쿼리를 짭니다.
+    # 예: "키워드 (기후 OR 환경 OR 탄소 OR 에너지 OR 온난화) when:7d"
+    refined_query = f"{keyword} (기후 OR 환경 OR 탄소 OR 에너지 OR 온난화) when:7d"
+    encoded_query = urllib.parse.quote(refined_query)
+    
     url = f"https://news.google.com/rss/search?q={encoded_query}&hl=ko&gl=KR&ceid=KR:ko"
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
+    
+    # 💡 2차 대책: 파이썬 코드단에서 제목 검사하기 위한 '필수 환경 키워드 세트'
+    # 이 단어들이 제목에 '아예' 없는 뚱딴지같은 기사는 과감히 버립니다.
+    essential_words = ["기후", "환경", "탄소", "에너지", "온난화", "그린", "배출권", "재생", "CCUS", "발전", "오염", "생태"]
+    
     try:
         response = requests.get(url, headers=headers)
         if response.status_code == 200:
@@ -24,6 +33,15 @@ def get_climate_news(keyword):
                 title = item.title.get_text()
                 link = item.link.get_text()
                 pub_date_str = item.pubDate.get_text() if item.pubDate else ""
+                
+                # 💡 [2차 필터링 로직 작동]
+                # 제목에 필수 단어가 하나라도 들어있는지 검사합니다.
+                # 단, 사용자가 직접 검색창에 입력한 검색어(keyword)가 들어있는 경우는 예외로 통과시킵니다.
+                has_essential_word = any(word in title for word in essential_words)
+                is_keyword_included = keyword in title
+                
+                if not (has_essential_word or is_keyword_included):
+                    continue # 둘 다 해당 안 되면 기사 목록에 안 넣고 패스(삭제)!
                 
                 try:
                     pub_date = datetime.strptime(pub_date_str, "%a, %d %b %Y %H:%M:%S %Z")

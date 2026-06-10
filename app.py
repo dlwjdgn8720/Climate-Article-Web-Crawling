@@ -5,43 +5,60 @@ import pandas as pd
 import urllib.parse
 from datetime import datetime
 
-# --- [1. 구글 RSS 뉴스 크롤링 함수 (기후/환경 노이즈 필터링 강화)] ---
+# --- [1. 구글 RSS 뉴스 크롤링 함수 (인물/기업 자동 감지 및 글로벌 범용 필터)] ---
 def get_climate_news(keyword):
-    # 💡 1차 대책: 구글 검색 연산자 활용
-    # 사용자가 친 검색어 외에 환경 관련 핵심 단어들 중 하나가 '반드시(AND)' 포함되도록 검색 쿼리를 짭니다.
-    # 예: "키워드 (기후 OR 환경 OR 탄소 OR 에너지 OR 온난화) when:7d"
-    refined_query = f"{keyword} (기후 OR 환경 OR 탄소 OR 에너지 OR 온난화) when:7d"
-    encoded_query = urllib.parse.quote(refined_query)
-    
-    url = f"https://news.google.com/rss/search?q={encoded_query}&hl=ko&gl=KR&ceid=KR:ko"
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
     
-    # 💡 2차 대책: 파이썬 코드단에서 제목 검사하기 위한 '필수 환경 키워드 세트'
-    # 이 단어들이 제목에 '아예' 없는 뚱딴지같은 기사는 과감히 버립니다.
-    essential_words = ["기후", "환경", "탄소", "에너지", "온난화", "그린", "배출권", "재생", "CCUS", "발전", "오염", "생태"]
+    # 1. 시스템이 인지할 순수 기후/환경/에너지 핵심 단어 정의
+    eco_words = ["기후", "환경", "탄소", "에너지", "온난화", "그린", "배출권", "재생", "CCUS", "발전", "오염", "생태"]
     
-    try:
-        response = requests.get(url, headers=headers)
-        if response.status_code == 200:
+    # 2. [지능형 쿼리 분기 알고리즘]
+    # 검색어에 순수 환경 단어가 포함되어 있는지 확인합니다.
+    is_pure_eco_keyword = any(word in keyword for word in eco_words)
+    
+    if is_pure_eco_keyword:
+        # 사용자가 '탄소중립', 'CCUS' 같은 순수 환경 용어를 쳤다면 해당 도메인을 더 심도 있게 묶어줍니다.
+        tech_filter = "(기후 OR 환경 OR 탄소 OR 에너지 OR 기술)"
+    else:
+        # 💡 [핵심] 사용자가 '젠슨 황', '일론 머스크', '구글', '샘 알트만' 등 
+        # 환경 단어가 아닌 인물/기업을 검색했다면, 기후 테크 및 미래 청정에너지 맥락을 대폭 결합합니다.
+        tech_filter = "(기후 OR 환경 OR 탄소 OR '그린 테크' OR '친환경 에너지' OR AI OR 기술 OR '시뮬레이터')"
+        
+    # 2차 대책: 파이썬 코드단에서 제목을 재검증할 '필수 단어 세트' (영문 표기 포함)
+    essential_words = eco_words + ["earth-2", "fourcastnet", "기상", "시뮬레이터", "친환경", "인공지능", "AI", "테크", "녹색"]
+
+    # ⏱️ 1주 -> 2주 -> 3주 순으로 기간을 늘려가며 반복 검색
+    for weeks in [1, 2, 3]:
+        # 어떤 검색어가 들어오든 인물이면 기술/환경 필터가, 환경 용어면 환경 필터가 유기적으로 조합됩니다.
+        query = f"{keyword} {tech_filter} when:{weeks}w"
+        encoded_query = urllib.parse.quote(query)
+        url = f"https://news.google.com/rss/search?q={encoded_query}&hl=ko&gl=KR&ceid=KR:ko"
+        
+        try:
+            response = requests.get(url, headers=headers)
+            if response.status_code != 200:
+                continue
+                
             soup = BeautifulSoup(response.text, 'lxml-xml')
             items = soup.find_all('item')
             
+            if not items:
+                continue
+                
             news_list = []
             for item in items:
                 title = item.title.get_text()
                 link = item.link.get_text()
                 pub_date_str = item.pubDate.get_text() if item.pubDate else ""
                 
-                # 💡 [2차 필터링 로직 작동]
-                # 제목에 필수 단어가 하나라도 들어있는지 검사합니다.
-                # 단, 사용자가 직접 검색창에 입력한 검색어(keyword)가 들어있는 경우는 예외로 통과시킵니다.
-                has_essential_word = any(word in title for word in essential_words)
-                is_keyword_included = keyword in title
+                # [2차 필터링] 제목 검증
+                has_essential_word = any(word.lower() in title.lower() for word in essential_words)
+                is_keyword_included = keyword.lower() in title.lower()
                 
                 if not (has_essential_word or is_keyword_included):
-                    continue # 둘 다 해당 안 되면 기사 목록에 안 넣고 패스(삭제)!
+                    continue
                 
                 try:
                     pub_date = datetime.strptime(pub_date_str, "%a, %d %b %Y %H:%M:%S %Z")
@@ -55,13 +72,19 @@ def get_climate_news(keyword):
                     "작성일": formatted_date,
                     "_raw_date": pub_date
                 })
+                
             if news_list:
                 news_list = sorted(news_list, key=lambda x: x["_raw_date"], reverse=True)
-            return news_list
-        return None
-    except Exception as e:
-        st.error(f"데이터 오류: {e}")
-        return None
+                
+                if weeks > 1:
+                    st.toast(f"💡 최근 1주일 내 뉴스가 없어 {weeks}주일 전 데이터까지 확장 수집했습니다!", icon="ℹ️")
+                    
+                return news_list
+                
+        except Exception as e:
+            continue
+            
+    return None
 
 # --- [2. Streamlit 반응형 UI 설정] ---
 st.set_page_config(page_title="실시간 뉴스 수집기", page_icon="🌱", layout="wide")

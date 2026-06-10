@@ -100,28 +100,32 @@ st.markdown("""
     <div class="sub-title">최근 7일간의 뉴스를 가장 빠르게 확인하세요.</div>
 """, unsafe_allow_html=True)
 
-# 💡 [세션 상태 관리]: 검색어와 데이터 변수들을 미리 초기화합니다.
+# 💡 [세션 상태 관리]
 if "search_keyword" not in st.session_state: st.session_state.search_keyword = "기후변화"
 if "crawled_df" not in st.session_state: st.session_state.crawled_df = None
 if "current_keyword" not in st.session_state: st.session_state.current_keyword = ""
 if "page_number" not in st.session_state: st.session_state.page_number = 1
+# 💡 추천 키워드 버튼 클릭 여부를 감지하기 위한 트리거 변수 추가
+if "trigger_by_button" not in st.session_state: st.session_state.trigger_by_button = False
 
-# 💡 [추천 키워드 학습/설정 파트]: 여기에 원하는 키워드를 마음껏 추가하거나 변경하세요!
+# 추천 키워드 학습/설정 파트
 recommended_keywords = ["기후변화", "탄소중립", "신재생에너지", "CCUS", "지구온난화"]
 
 st.markdown("<div class='keyword-label'>🔥 추천 키워드 바로 검색</div>", unsafe_allow_html=True)
 
-# 추천 키워드 버튼들을 한 줄로 이쁘게 배치 (모바일에서는 자동으로 흐름 정렬됨)
+# 추천 키워드 버튼 배치
 kw_cols = st.columns(len(recommended_keywords))
 for i, kw in enumerate(recommended_keywords):
     with kw_cols[i]:
-        # 버튼을 누르면 해당 키워드가 세션 상태에 즉시 반영되고 페이지가 새로고침됩니다.
+        # 💡 [수정] 버튼을 누르면 검색어를 세션에 넣고, '버튼으로 트리거됨'을 True로 만든 뒤 강제 새로고침합니다.
         if st.button(f"#{kw}", use_container_width=True):
             st.session_state.search_keyword = kw
+            st.session_state.trigger_by_button = True
+            st.rerun()
 
-st.write(" ") # 미세 여백 조절
+st.write(" ") 
 
-# 입력창과 버튼 배치 (value 값에 세션에 저장된 검색어가 연동됩니다)
+# 입력창과 버튼 배치
 col1, col2 = st.columns([3, 1])
 with col1:
     keyword_input = st.text_input("검색어 입력", value=st.session_state.search_keyword, label_visibility="collapsed")
@@ -130,20 +134,30 @@ with col2:
 
 st.write("---")
 
-# 검색 실행 로직 체크 (직접 검색 버튼을 누름 / 엔터를 침 / 혹은 추천 키워드 버튼을 클릭해서 세션 값이 바뀜)
-trigger_search = search_button or (keyword_input and keyword_input != st.session_state.current_keyword)
+# 💡 [수정된 로직]: 
+# 1. 오른쪽 '뉴스 검색' 버튼을 눌렀을 때
+# 2. 입력창에서 엔터를 쳐서 입력창 내부 값이 기존 검색어와 달라졌을 때
+# 3. 혹은 상단 추천 키워드 해시태그 버튼을 클릭해서 trigger_by_button이 True가 되었을 때
+is_text_entered = (keyword_input and keyword_input != st.session_state.current_keyword)
+trigger_search = search_button or is_text_entered or st.session_state.trigger_by_button
 
 if trigger_search:
-    with st.spinner(f"'{keyword_input}' 최신 뉴스를 가져오는 중..."):
-        data = get_climate_news(keyword_input)
+    # 어떤 경로로 들어왔든 최종 검색 타겟은 keyword_input(화면에 채워진 단어)으로 통일합니다.
+    target_word = keyword_input
+    
+    with st.spinner(f"'{target_word}' 최신 뉴스를 가져오는 중..."):
+        data = get_climate_news(target_word)
         if data:
             st.session_state.crawled_df = pd.DataFrame(data)
-            st.session_state.current_keyword = keyword_input
-            st.session_state.search_keyword = keyword_input # 현재 쳐진 텍스트 상태 동기화
-            st.session_state.page_number = 1 # 페이지 리셋
+            st.session_state.current_keyword = target_word
+            st.session_state.search_keyword = target_word
+            st.session_state.page_number = 1
         else:
             st.session_state.crawled_df = None
-            st.error(f"최근 1주일간의 '{keyword_input}' 뉴스 피드를 가져오지 못했습니다.")
+            st.error(f"최근 1주일간의 '{target_word}' 뉴스 피드를 가져오지 못했습니다.")
+            
+    # 💡 크롤링이 한 번 완료되면 버튼 트리거 상태를 다시 원래대로(False) 꺼줍니다.
+    st.session_state.trigger_by_button = False
 
 # --- [3. 결과 레이아웃 구성] ---
 if st.session_state.crawled_df is not None:

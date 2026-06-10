@@ -12,21 +12,18 @@ def get_climate_news(keyword):
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
     
-    # 순수 기후/환경 기술어 리스트
     eco_words = ["기후", "탄소", "에너지", "온난화", "그린", "배출권", "재생", "CCUS", "발전", "오염", "친환경", "테크", "넷제로", "환경"]
     is_pure_eco = any(word in keyword for word in eco_words)
     
-    # 💡 [대혁신] 구글 RSS의 영문 약어 인식 한계를 극복하기 위한 확장 쿼리 맵 생성
-    # 사용자가 'CCUS'를 치면 구글에 국문 풀이명과 핵심 도메인을 결합한 완벽한 검색 조합을 던집니다.
+    # 💡 [핵심 수정 1] 구글이 1차 데이터를 '무조건 많이' 뱉어내도록 쿼리 수정 (AND 방지)
     if keyword.upper() == "CCUS":
-        query_text = "탄소포집 CCUS 이산화탄소 저감"
+        query_text = "CCUS OR 탄소포집 OR '탄소 포집'"
     elif "온난화" in keyword:
-        query_text = "지구온난화 기후위기 환경"
+        query_text = "지구온난화 OR 기후위기"
     elif is_pure_eco:
         query_text = f"{keyword}"
     else:
-        # 인물/기업 검색 시
-        query_text = f"{keyword} 기후 탄소"
+        query_text = f"{keyword} (기후 OR 탄소 OR 환경)"
         
     encoded_query = urllib.parse.quote(query_text)
     url = f"https://news.google.com/rss/search?q={encoded_query}&hl=ko&gl=KR&ceid=KR:ko"
@@ -51,22 +48,20 @@ def get_climate_news(keyword):
             link = item.link.get_text()
             pub_date_str = item.pubDate.get_text() if item.pubDate else ""
             
-            # 💡 [정밀 검증 2차 필터링 라이트화]
+            # 2차 매핑 검증
             if not is_pure_eco:
-                # 인물/기업 검색 시: 이름과 기후 도메인 단어가 동시에 존재해야 가십성 뉴스 차단
                 if keyword.lower() not in title.lower():
                     continue
                 if not any(w in title for w in ["기후", "환경", "탄소", "에너지", "그린", "친환경", "신재생", "넷제로", "배출권"]):
                     continue
             else:
-                # 💡 [핵심 수정] 전문 용어 검색 시 파이썬 단에서의 "과도한 차단"을 전면 해제합니다.
-                # 구글이 이미 1차로 연관 뉴스를 잘 긁어왔으므로, 제목 검사는 최소한의 핵심 키워드만 있으면 패스시킵니다.
+                # 💡 [핵심 수정 2] 전문 용어 필터 가드 완전 개방 (탈락 방지)
                 if keyword.upper() == "CCUS":
-                    ccus_pass = ["ccus", "포집", "저장", "탄소", "이산화탄소", "에너지", "환경", "기후", "발전", "그린", "신재생"]
+                    ccus_pass = ["ccus", "포집", "저장", "탄소", "이산화탄소", "에너지", "환경", "기후", "발전", "그린", "신재생", "테크", "넷제로"]
                     if not any(syn in title.lower() for syn in ccus_pass):
                         continue
                 else:
-                    eco_pass = [keyword.lower(), "기후", "탄소", "환경", "온난화", "그린", "에너지"]
+                    eco_pass = [keyword.lower(), "기후", "탄소", "환경", "온난화", "그린", "에너지", "위기"]
                     if not any(w in title.lower() for w in eco_pass):
                         continue
             
@@ -93,13 +88,10 @@ def get_climate_news(keyword):
             if time_delta <= timedelta(days=30):
                 news_month.append(data_row)
                 
-        # 데이터 수집 기간 매핑 (1주일 우선 -> 없으면 한 달 연장)
         if news_week:
-            final_list = sorted(news_week, key=lambda x: x["_raw_date"], reverse=True)
-            return final_list, "1주일"
+            return sorted(news_week, key=lambda x: x["_raw_date"], reverse=True), "1주일"
         elif news_month:
-            final_list = sorted(news_month, key=lambda x: x["_raw_date"], reverse=True)
-            return final_list, "한 달"
+            return sorted(news_month, key=lambda x: x["_raw_date"], reverse=True), "한 달"
             
     except Exception as e:
         pass
@@ -126,24 +118,16 @@ st.markdown("""
     <div class="sub-title">검색어와 연관된 최신 기후 및 환경 기술 뉴스를 정확하게 수집합니다.</div>
 """, unsafe_allow_html=True)
 
+# 💡 [핵심 수정 3] 버튼 클릭 시 에러 메시지 즉시 띄우지 않고 세션에 통합 처리되도록 수정
 recommended_keywords = ["기후변화", "탄소중립", "신재생에너지", "CCUS", "지구온난화"]
 st.markdown("<div class='keyword-label'>🔥 추천 키워드 바로 검색</div>", unsafe_allow_html=True)
 
+trigger_keyword = None
 kw_cols = st.columns(len(recommended_keywords))
 for i, kw in enumerate(recommended_keywords):
     with kw_cols[i]:
         if st.button(f"#{kw}", use_container_width=True):
-            st.session_state.search_word = kw
-            with st.spinner(f"'{kw}' 최신 뉴스를 수집 중..."):
-                res, period = get_climate_news(kw)
-                if res:
-                    st.session_state.news_df = pd.DataFrame(res)
-                    st.session_state.period_info = period
-                    st.session_state.last_searched = kw
-                    st.session_state.p_num = 1
-                else:
-                    st.session_state.news_df = None
-                    st.error("최근 수집된 뉴스 데이터가 없습니다.")
+            trigger_keyword = kw
 
 st.write(" ") 
 
@@ -153,29 +137,35 @@ with col1:
 with col2:
     search_button = st.button("🔍 뉴스 검색", use_container_width=True)
 
-# 엔터 키 및 검색 버튼 트리거 작동
+# 엔터 및 검색 버튼 동작 통합 관리
 is_enter_pressed = keyword_input and (keyword_input != st.session_state.last_searched)
-trigger_search = search_button or is_enter_pressed
+final_keyword = trigger_keyword if trigger_keyword else keyword_input
+trigger_search = (trigger_keyword is not None) or search_button or is_enter_pressed
 
-if trigger_search:
-    with st.spinner(f"'{keyword_input}' 뉴스 매핑 및 정제 중..."):
-        res, period = get_climate_news(keyword_input)
+if trigger_search and final_keyword:
+    with st.spinner(f"'{final_keyword}' 뉴스 매핑 및 정제 중..."):
+        res, period = get_climate_news(final_keyword)
         if res:
             st.session_state.news_df = pd.DataFrame(res)
             st.session_state.period_info = period
-            st.session_state.last_searched = keyword_input  
+            st.session_state.last_searched = final_keyword
             st.session_state.p_num = 1
         else:
             st.session_state.news_df = None
-            st.session_state.last_searched = keyword_input
-            st.error(f"'{keyword_input}' 관련 최신 기후 뉴스가 없거나 수집에 실패했습니다.")
+            st.session_state.last_searched = final_keyword
+            # 💡 하단 결과 안내 영역에서 에러를 단 한 번만 출력하게 제어하기 위해 세션에 플래그 설정
+            st.session_state.search_failed = True
+            st.session_state.failed_keyword = final_keyword
+elif not trigger_search:
+    if "search_failed" in st.session_state:
+        del st.session_state.search_failed
 
 st.write("---")
 
 # --- [3. 결과 레이아웃 디스플레이] ---
 if st.session_state.news_df is not None:
     df = st.session_state.news_df
-    current_kw = st.session_state.last_searched if st.session_state.last_searched else st.session_state.search_word
+    current_kw = st.session_state.last_searched
     period_text = st.session_state.period_info
     
     st.success(f"✨ '{current_kw}' 관련 {period_text} 이내 최신 뉴스 {len(df)}개 (최신순 정렬)")
@@ -236,4 +226,8 @@ if st.session_state.news_df is not None:
             use_container_width=True
         )
 else:
-    st.info("검색어를 입력하거나 위의 추천 키워드를 눌러주세요.")
+    # 💡 [핵심 수정 4] 데이터가 없을 경우 오직 이곳에서 단 한 번만 깔끔하게 에러 메시지 출력
+    if st.session_state.get("search_failed", False):
+        st.error(f"'{st.session_state.failed_keyword}' 관련 최신 기후 뉴스가 없거나 수집에 실패했습니다.")
+    else:
+        st.info("검색어를 입력하거나 위의 추천 키워드를 눌러주세요.")

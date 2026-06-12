@@ -1,0 +1,5 @@
+climate_model/
+__pycache__/
+.streamlit/
+*.csv
+results

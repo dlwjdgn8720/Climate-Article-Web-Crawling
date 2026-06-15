@@ -42,8 +42,9 @@ def predict_climate_news(title):
     뉴스 제목 문맥을 분석하여 진짜 기후 뉴스인지 판별합니다.
     리턴값: (prediction, confidence) -> 이진 분류 결과와 정밀 확률 스코어 반환
     """
+    # 💡 [핵심 수정] 모델 로드 실패 시에도 (결과, 신뢰도) 튜플 규격을 정확히 맞춰 반환합니다.
     if tokenizer is None or model is None:
-        return 1, 1.0  # 모델 로드 실패 시 폴백 (합격 처리, 신뢰도 100%)
+        return 1, 1.0  # 1(기후뉴스 합격), 1.0(신뢰도 100%로 고정 표시)
         
     inputs = tokenizer(
         title, 
@@ -57,10 +58,9 @@ def predict_climate_news(title):
         outputs = model(**inputs)
         
     logits = outputs.logits
-    # 💡 [수정] 로짓 값을 소프트맥스 확률 값으로 변환하여 신뢰도 추출
     probs = torch.softmax(logits, dim=-1)
     prediction = torch.argmax(logits, dim=-1).item()
-    confidence = probs[0][prediction].item()  # 해당 클래스의 확률 (0.0 ~ 1.0)
+    confidence = probs[0][prediction].item()
     
     return prediction, confidence
 

@@ -6,7 +6,7 @@ import urllib.parse
 from datetime import datetime, timezone, timedelta
 import email.utils
 import torch
-from transformers import AutoModelForSequenceClassification, BertTokenizer
+from transformers import BertForSequenceClassification, BertTokenizer
 
 # ==========================================
 # [0. 기후 AI 모델 원격 로드 및 예측 파이프라인]
@@ -21,7 +21,7 @@ def load_climate_model():
     """
     try:
         tokenizer = BertTokenizer.from_pretrained(MODEL_PATH, use_fast=False)
-        model = AutoModelForSequenceClassification.from_pretrained(MODEL_PATH)
+        model = BertForSequenceClassification.from_pretrained(MODEL_PATH)
         model.eval()
         return tokenizer, model
     except Exception as e:

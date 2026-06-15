@@ -13,10 +13,15 @@ from transformers import AutoModelForSequenceClassification, AutoTokenizer
 # ==========================================
 # [0. 기후 AI 모델 로드 — threshold 포함]
 # ==========================================
-MODEL_PATH = "./climate_model"
+
+# 변경 전: 로컬 폴더 경로 탐색
+# MODEL_PATH = "./climate_model"
+
+MODEL_PATH = "dlwjdgn8720/my-climate-kobert"
 
 @st.cache_resource
 def load_climate_model():
+    """ 허깅페이스 저장소로부터 모델과 토크나이저를 원격 뱅크에서 로드 """
     if not os.path.exists(MODEL_PATH):
         return None, None, 0.5   # 모델 없으면 기본 임계값 0.5
 
@@ -26,16 +31,16 @@ def load_climate_model():
         model.eval()
 
         # 학습 시 계산된 최적 threshold 로드 (없으면 기본값)
-        threshold = 0.5
+        ''' threshold = 0.5
         threshold_path = os.path.join(MODEL_PATH, "threshold.json")
         if os.path.exists(threshold_path):
             with open(threshold_path, "r", encoding="utf-8") as f:
                 info = json.load(f)
-                threshold = info.get("threshold", 0.5)
+                threshold = info.get("threshold", 0.5) '''
 
-        return tokenizer, model, threshold
+        return tokenizer, model
     except Exception:
-        return None, None, 0.5
+        return None, None
 
 tokenizer, model, CLIMATE_THRESHOLD = load_climate_model()
 

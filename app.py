@@ -21,7 +21,12 @@ def load_climate_model():
     """
     try:
         tokenizer = BertTokenizer.from_pretrained(MODEL_PATH, use_fast=False)
-        model = BertForSequenceClassification.from_pretrained(MODEL_PATH)
+        model = BertForSequenceClassification.from_pretrained(
+            MODEL_PATH,
+            use_safetensors=True,
+            num_labels=2,                     # 기후뉴스(1)/일반뉴스(0) 이진 분류 규격 강제
+            ignore_mismatched_sizes=True      # 레이블 가중치 크기 불일치 에러 방지
+            )
         model.eval()
         return tokenizer, model
     except Exception as e:

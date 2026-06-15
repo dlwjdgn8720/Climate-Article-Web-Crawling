@@ -4,4 +4,4 @@ beautifulsoup4
 pandas
 lxml
 torch
-transformers
+transformers== 5.11.0

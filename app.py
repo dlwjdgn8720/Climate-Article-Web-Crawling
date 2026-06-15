@@ -6,7 +6,7 @@ import urllib.parse
 from datetime import datetime, timezone, timedelta
 import email.utils
 import torch
-from transformers import AutoModelForSequenceClassification, AutoTokenizer
+from transformers import AutoModelForSequenceClassification, BertTokenizer
 
 # ==========================================
 # [0. 기후 AI 모델 원격 로드 및 예측 파이프라인]
@@ -20,7 +20,7 @@ def load_climate_model():
     로컬 경로 체크 로직을 완전히 제거하여 배포 환경(Streamlit Cloud)에서 정상 작동
     """
     try:
-        tokenizer = AutoTokenizer.from_pretrained(MODEL_PATH, use_fast=False)
+        tokenizer = BertTokenizer.from_pretrained(MODEL_PATH, use_fast=False)
         model = AutoModelForSequenceClassification.from_pretrained(MODEL_PATH)
         model.eval()
         return tokenizer, model

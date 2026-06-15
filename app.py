@@ -26,6 +26,7 @@ def load_climate_model():
         return tokenizer, model
     except Exception as e:
         # 허깅페이스 로드 실패 시(네트워크 이슈 또는 비공개 저장소 등) 폴백용으로 None 반환
+        st.session_state["model_load_error"] = str(e)
         return None, None
 
 # 모델 및 토크나이저 초기화
@@ -223,6 +224,8 @@ if tokenizer is not None and model is not None:
     st.caption("🤖 **AI Guardrail Engine 상태:** `🟢 허깅페이스 원격 KoBERT 필터링 활성화` | 문맥 맞춤형 노이즈 자동 제거 중")
 else:
     st.error("⚠️ 학습된 AI 모델이 저장소로부터 로드되지 않았습니다. 현재는 키워드 기반 폴백 모드로 연동 구동 중입니다.")
+    if "model_load_error" in st.session_state:
+        st.info(f"📋 **실제 모델 로드 에러 로그:** {st.session_state['model_load_error']}")
 
 # 추천 키워드 배열 구조
 recommended_keywords = ["기후변화", "탄소중립", "신재생에너지", "CCUS", "식량", "물가", "에너지"]

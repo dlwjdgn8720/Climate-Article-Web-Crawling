@@ -22,8 +22,8 @@ MODEL_PATH = "dlwjdgn8720/my-climate-kobert"
 @st.cache_resource
 def load_climate_model():
     """ 허깅페이스 저장소로부터 모델과 토크나이저를 원격 뱅크에서 로드 """
-    if not os.path.exists(MODEL_PATH):
-        return None, None, 0.5   # 모델 없으면 기본 임계값 0.5
+    ''' if not os.path.exists(MODEL_PATH):
+        return None, None, 0.5   # 모델 없으면 기본 임계값 0.5 '''
 
     try:
         tokenizer = AutoTokenizer.from_pretrained(MODEL_PATH)
@@ -42,7 +42,7 @@ def load_climate_model():
     except Exception:
         return None, None
 
-tokenizer, model, CLIMATE_THRESHOLD = load_climate_model()
+tokenizer, model = load_climate_model()  
 
 
 def predict_climate_news(title):

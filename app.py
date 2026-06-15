@@ -162,6 +162,7 @@ def get_climate_news(keyword, category):
             
             # [Hugging Face AI 모델 기반 문맥 필터링 작동]
             if predict_climate_news(title) == 0:
+                print(f"❌ [AI 탈락 기사]: {title}")
                 continue
             
             is_major = False

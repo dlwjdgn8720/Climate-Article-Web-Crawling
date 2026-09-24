@@ -17,7 +17,7 @@ import requests
 from news_crawler import get_climate_news
 
 NAVER_TOKEN_URL = "https://nid.naver.com/oauth2.0/token"
-NAVER_WRITE_POST_URL = "https://openapi.naver.com/blog/writePost.json"
+NAVER_WRITE_POST_URL = "https://openapi.naver.com/blog/writePost"
 
 # 다이제스트를 구성할 때 모아볼 키워드들 (news_config.py의 추천 키워드와 동일한 풀)
 DIGEST_KEYWORDS = ["기후변화", "탄소중립", "이상기온"]

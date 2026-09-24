@@ -83,10 +83,15 @@ def main():
         print("토큰 발급 실패:", data)
         return
 
-    print("\n발급 성공! 아래 값을 GitHub 저장소 Settings > Secrets and variables > Actions에 등록하세요:\n")
-    print(f"NAVER_CLIENT_ID     = {client_id}")
-    print(f"NAVER_CLIENT_SECRET = {client_secret}")
-    print(f"NAVER_REFRESH_TOKEN = {data['refresh_token']}")
+    print("\n발급 성공! 아래 각 줄의 '=' 뒤에 있는 값만(공백 없이) 복사해서")
+    print("GitHub 저장소 Settings > Secrets and variables > Actions에 등록하세요.")
+    print("(주의: 'NAVER_CLIENT_ID = ' 같은 이름/등호 부분까지 같이 복사하면 인증이 실패합니다)\n")
+    print("[NAVER_CLIENT_ID]")
+    print(client_id)
+    print("\n[NAVER_CLIENT_SECRET]")
+    print(client_secret)
+    print("\n[NAVER_REFRESH_TOKEN]")
+    print(data["refresh_token"])
 
 
 if __name__ == "__main__":

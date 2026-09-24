@@ -1,0 +1,26 @@
+name: 네이버 블로그 기후뉴스 자동 발행
+
+on:
+  schedule:
+    - cron: "0 22 * * *"  # UTC 22:00 = KST 07:00
+  workflow_dispatch: {}   # Actions 탭에서 수동 실행 버튼
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 의존성 설치
+        run: pip install -r requirements.txt
+
+      - name: 다이제스트 발행
+        env:
+          NAVER_CLIENT_ID: ${{ secrets.NAVER_CLIENT_ID }}
+          NAVER_CLIENT_SECRET: ${{ secrets.NAVER_CLIENT_SECRET }}
+          NAVER_REFRESH_TOKEN: ${{ secrets.NAVER_REFRESH_TOKEN }}
+        run: python naver_blog_publisher.py

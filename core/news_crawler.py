@@ -18,6 +18,21 @@ from core.news_config import (
 )
 
 
+WEEK_LIMIT = timedelta(days=7)
+MAJOR_EXTENDED_LIMIT = timedelta(days=30)
+MAJOR_EXTENDED_MAX = 5  # 1주일 내 주요 언론사 기사가 없을 때 확장 검색으로 보여줄 최대 건수
+
+
+def _detect_major_media(title, link):
+    """제목/링크에 주요 언론사 키워드가 포함되어 있으면 언론사명을, 없으면 None을 반환합니다."""
+    lower_title = title.lower()
+    lower_link = link.lower()
+    for media_name, kws in MAJOR_MEDIA_DICT.items():
+        if any(kw in lower_title or kw in lower_link for kw in kws):
+            return media_name
+    return None
+
+
 @st.cache_data(ttl=600, show_spinner=False)
 def _fetch_climate_news_cached(keyword, category):
     """
@@ -60,7 +75,9 @@ def _fetch_climate_news_cached(keyword, category):
 
         now = datetime.now(timezone.utc)
 
-        # 1차 필터링: 제목/날짜 기준으로 후보만 추려서 모델 추론 대상을 최소화
+        # 1차 필터링: 제목/날짜 기준으로 후보만 추려서 모델 추론 대상을 최소화.
+        # 일반 기사는 1주일 이내만, 주요 언론사(⭐) 기사는 1주일 내 결과가 없을 때
+        # 대비해 최대 30일까지 후보로 남겨둔다(최종 채택 여부는 분류 이후 결정).
         candidates = []
         for item in items:
             title = item.title.get_text()
@@ -77,10 +94,17 @@ def _fetch_climate_news_cached(keyword, category):
             except Exception:
                 continue
 
-            if now - parsed_date > timedelta(days=7):
+            age = now - parsed_date
+            media_name = _detect_major_media(title, link)
+
+            if age > MAJOR_EXTENDED_LIMIT:
+                continue
+            if media_name is None and age > WEEK_LIMIT:
                 continue
 
-            candidates.append({"title": title, "link": link, "parsed_date": parsed_date})
+            candidates.append({
+                "title": title, "link": link, "parsed_date": parsed_date, "media_name": media_name,
+            })
 
         if not candidates:
             return None, None, None
@@ -98,33 +122,36 @@ def _fetch_climate_news_cached(keyword, category):
             title = candidate["title"]
             link = candidate["link"]
             parsed_date = candidate["parsed_date"]
+            media_name = candidate["media_name"]
 
             data_row = {
                 "기사 제목": title,
                 "기사 링크": link,
                 "작성일":     parsed_date.strftime("%Y-%m-%d %H:%M"),
                 "_raw_date": parsed_date,
-                "우선순위":  "일반 기사",
+                "우선순위":  f"⭐ {media_name}" if media_name else "일반 기사",
                 "AI 신뢰도": f"{confidence:.0%}",
                 "_confidence": confidence,
             }
 
-            is_major = False
-            lower_title = title.lower()
-            lower_link  = link.lower()
-            for media_name, kws in MAJOR_MEDIA_DICT.items():
-                if any(kw in lower_title or kw in lower_link for kw in kws):
-                    is_major = True
-                    data_row["우선순위"] = f"⭐ {media_name}"
-                    break
+            (major_news_list if media_name else general_news_list).append(data_row)
 
-            (major_news_list if is_major else general_news_list).append(data_row)
+        # 일반 기사는 이미 1주일 이내로만 후보를 구성했으므로 그대로 사용.
+        # 주요 언론사는 1주일 이내 기사가 있으면 그것만, 없으면 30일 범위에서 최대
+        # MAJOR_EXTENDED_MAX건까지 확장해서 보여준다.
+        major_news_list.sort(key=lambda x: x["_raw_date"], reverse=True)
+        general_news_list.sort(key=lambda x: x["_raw_date"], reverse=True)
 
-        final_news = major_news_list + general_news_list
+        major_within_week = [row for row in major_news_list if now - row["_raw_date"] <= WEEK_LIMIT]
+        used_extended_major = bool(major_news_list) and not major_within_week
+        final_major = major_within_week if major_within_week else major_news_list[:MAJOR_EXTENDED_MAX]
+
+        final_news = final_major + general_news_list
         final_news.sort(key=lambda x: x["_raw_date"], reverse=True)
 
         if final_news:
-            return final_news, "1주일", None
+            period_label = "1주일 (주요 언론사는 최근 기사가 없어 최대 30일로 확장)" if used_extended_major else "1주일"
+            return final_news, period_label, None
 
     except Exception as e:
         print(f"크롤링 에러 추적: {str(e)}")

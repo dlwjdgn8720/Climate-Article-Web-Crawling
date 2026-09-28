@@ -7,7 +7,7 @@ import torch
 from huggingface_hub import hf_hub_download
 from transformers import BertForSequenceClassification, BertTokenizerFast
 
-from news_config import CLIMATE_FALLBACK_KEYWORDS
+from core.news_config import CLIMATE_FALLBACK_KEYWORDS
 
 HUB_MODEL_PATH = "dlwjdgn8720/my-climate-kobert"
 HUB_MODEL_SUBFOLDER = "climate_model"  # 허브 저장소 루트에는 구버전 파일만 있고, 실제 학습 산출물은 이 하위 폴더에 있음

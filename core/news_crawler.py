@@ -7,8 +7,8 @@ import requests
 import streamlit as st
 from bs4 import BeautifulSoup
 
-from climate_model import predict_climate_news_batch
-from news_config import (
+from core.climate_model import predict_climate_news_batch
+from core.news_config import (
     CATEGORY_MAP,
     CLIMATE_SUBQUERY,
     EXCLUDE_QUERY,
@@ -77,7 +77,7 @@ def _fetch_climate_news_cached(keyword, category):
             except Exception:
                 continue
 
-            if now - parsed_date > timedelta(days=30):
+            if now - parsed_date > timedelta(days=7):
                 continue
 
             candidates.append({"title": title, "link": link, "parsed_date": parsed_date})
@@ -120,13 +120,11 @@ def _fetch_climate_news_cached(keyword, category):
 
             (major_news_list if is_major else general_news_list).append(data_row)
 
-        sorted_major   = sorted(major_news_list,   key=lambda x: x["_raw_date"], reverse=True)
-        sorted_general = sorted(general_news_list, key=lambda x: x["_raw_date"], reverse=True)
-        final_news = sorted_major + sorted_general
+        final_news = major_news_list + general_news_list
+        final_news.sort(key=lambda x: x["_raw_date"], reverse=True)
 
         if final_news:
-            has_week = any((now - x["_raw_date"]) <= timedelta(days=7) for x in final_news)
-            return final_news, ("1주일" if has_week else "한 달"), None
+            return final_news, "1주일", None
 
     except Exception as e:
         print(f"크롤링 에러 추적: {str(e)}")

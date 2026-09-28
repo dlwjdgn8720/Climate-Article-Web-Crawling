@@ -4,10 +4,10 @@ import re
 import pandas as pd
 import streamlit as st
 
-import climate_model
-from feedback_store import get_supabase_config, load_feedback_df, save_feedback
-from news_config import CATEGORIES, PERSON_KEYWORDS
-from news_crawler import get_climate_news
+from core import climate_model
+from core.feedback_store import get_supabase_config, load_feedback_df, save_feedback
+from core.news_config import CATEGORIES, PERSON_KEYWORDS
+from core.news_crawler import get_climate_news
 
 # ─────────────────────────────────────────────────────────────────
 # [UI 블록]
